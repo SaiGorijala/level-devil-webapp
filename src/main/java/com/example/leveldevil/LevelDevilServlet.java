@@ -16,7 +16,7 @@ import java.io.PrintWriter;
 public class LevelDevilServlet extends HttpServlet {
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException {
         resp.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = resp.getWriter()) {
             out.println("<!DOCTYPE html>");
@@ -29,6 +29,8 @@ public class LevelDevilServlet extends HttpServlet {
             out.println("    <p>This is the starting point for your Level Devil-style web application.</p>");
             out.println("</body>");
             out.println("</html>");
+        } catch (IOException e) {
+            throw new ServletException("Failed to write response", e);
         }
     }
 }
