@@ -82,11 +82,11 @@
     <distributionManagement>
         <repository>
             <id>nexus-releases</id>
-            <url>http://<EC2-IP>:8081/repository/maven-releases/</url>
+            <url>http://<13.59.112.112>:8081/repository/maven-releases/</url>
         </repository>
         <snapshotRepository>
             <id>nexus-snapshots</id>
-            <url>http://<EC2-IP>:8081/repository/maven-snapshots/</url>
+            <url>http://<13.59.112.112>:8081/repository/maven-snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 </project>
