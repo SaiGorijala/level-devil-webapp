@@ -1,0 +1,23 @@
+# Maven output
+/target/
+
+# IDE metadata
+/.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Eclipse, NetBeans, VS Code etc.
+nbproject/
+.vscode/
+
+# Maven wrapper (if added later)
+.mvn/
+!/.mvn/wrapper/maven-wrapper.jar
