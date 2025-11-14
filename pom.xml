@@ -1,6 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
@@ -17,17 +18,16 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <failOnMissingWebXml>false</failOnMissingWebXml>
 
-        <!-- SonarQube configuration -->
+        <!-- SonarQube -->
         <sonar.projectKey>com.example:level-devil-webapp</sonar.projectKey>
         <sonar.projectName>Level Devil Web Application</sonar.projectName>
-        <!-- Local SonarQube in Docker by default; override with -Dsonar.host.url if needed -->
-        <sonar.host.url>http://localhost:9000</sonar.host.url>
-        <!-- Read token from environment; set SONAR_TOKEN before running Maven -->
+        <sonar.host.url>http://3.17.13.134:9000</sonar.host.url>
         <sonar.token>${env.SONAR_TOKEN}</sonar.token>
     </properties>
 
     <dependencies>
-        <!-- Servlet API provided by container (e.g., Tomcat) -->
+
+        <!-- Servlet API -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
@@ -35,18 +35,21 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- JUnit for tests -->
+        <!-- JUnit -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.10.0</version>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
         <finalName>level-devil-webapp</finalName>
+
         <plugins>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -56,6 +59,7 @@
                     <target>${maven.compiler.target}</target>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-war-plugin</artifactId>
@@ -65,28 +69,35 @@
                     <warName>level-devil-webapp</warName>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
             </plugin>
-            <!-- SonarQube Scanner for Maven -->
+
+            <!-- SonarQube Scanner -->
             <plugin>
                 <groupId>org.sonarsource.scanner.maven</groupId>
                 <artifactId>sonar-maven-plugin</artifactId>
                 <version>3.11.0.3922</version>
             </plugin>
+
         </plugins>
     </build>
 
     <distributionManagement>
+
         <repository>
             <id>nexus-releases</id>
-            <url>http://<13.59.112.112>:8081/repository/maven-releases/</url>
+            <url>http://13.59.112.112:8081/repository/maven-releases/</url>
         </repository>
+
         <snapshotRepository>
             <id>nexus-snapshots</id>
-            <url>http://<13.59.112.112>:8081/repository/maven-snapshots/</url>
+            <url>http://13.59.112.112:8081/repository/maven-snapshots/</url>
         </snapshotRepository>
+
     </distributionManagement>
+
 </project>
