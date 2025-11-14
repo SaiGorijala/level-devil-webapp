@@ -16,6 +16,14 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <failOnMissingWebXml>false</failOnMissingWebXml>
+
+        <!-- SonarQube configuration -->
+        <sonar.projectKey>com.example:level-devil-webapp</sonar.projectKey>
+        <sonar.projectName>Level Devil Web Application</sonar.projectName>
+        <!-- Local SonarQube in Docker by default; override with -Dsonar.host.url if needed -->
+        <sonar.host.url>http://localhost:9000</sonar.host.url>
+        <!-- Read token from environment; set SONAR_TOKEN before running Maven -->
+        <sonar.token>${env.SONAR_TOKEN}</sonar.token>
     </properties>
 
     <dependencies>
@@ -61,6 +69,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+            </plugin>
+            <!-- SonarQube Scanner for Maven -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>3.11.0.3922</version>
             </plugin>
         </plugins>
     </build>
