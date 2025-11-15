@@ -51,7 +51,6 @@ pipeline {
                     usernameVariable: 'NEXUS_USER',
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
-
                     script {
 
                         // Get generated WAR file
@@ -60,7 +59,7 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
-                        // ✅ FIXED VERSION EXTRACTION (correct sed syntax)
+                        // Extract version
                         def VERSION = sh(
                             script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
                             returnStdout: true
@@ -120,11 +119,14 @@ pipeline {
 
         stage('Deploy to Tomcat Docker Server') {
             steps {
+
+                // ⚠️ REPLACE 'docker-server-key' With your actual Jenkins credential ID
                 sshagent(['docker-server']) {
+
                     sh """
                         ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat 2>/dev/null || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat 2>/dev/null || true'
                         ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest'
                     """
                 }
