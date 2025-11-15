@@ -53,14 +53,16 @@ pipeline {
                 )]) {
 
                     script {
+
+                        // Get generated WAR file
                         def WAR = sh(
                             script: "ls target/*.war | head -n 1",
                             returnStdout: true
                         ).trim()
 
-                        // 🔥 FIXED VERSION EXTRACTION (no escaping needed)
+                        // ✅ FIXED VERSION EXTRACTION (correct sed syntax)
                         def VERSION = sh(
-                            script: "grep -m1 '<version>' pom.xml | sed 's/.*<version>//; s/<\\\\/version>.*//' ",
+                            script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
                             returnStdout: true
                         ).trim()
 
