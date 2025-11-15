@@ -5,7 +5,7 @@ pipeline {
         APP_NAME       = "level-devil-webapp"
         GROUP_ID_PATH  = "com/example"
         DOCKER_REPO    = "sgorijala513/tomcat"
-        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-releases/"
+        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-snapshots/"
         SONAR_PROJECT  = "level-devil-webapp"
     }
 
