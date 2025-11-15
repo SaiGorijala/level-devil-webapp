@@ -135,7 +135,7 @@ pipeline {
             steps {
 
                 // The SSH key ID must match Jenkins credentials EXACTLY
-                sshagent(['docker-server-key']) {
+                sshagent(['docker-server']) {
 
                     sh """
                         ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
