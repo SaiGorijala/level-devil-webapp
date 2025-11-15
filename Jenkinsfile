@@ -55,40 +55,58 @@ pipeline {
                     )
                 ]) {
 
-                    sh '''
-                        WAR=$(ls target/*.war | head -n 1)
+                    script {
 
-                        VERSION=$(mvn -q \
-                            -Dexec.executable=echo \
-                            -Dexec.args='${project.version}' \
-                            org.codehaus.mojo:exec-maven-plugin:1.6.0:exec)
+                        env.WAR = sh(script: "ls target/*.war | head -n 1", returnStdout: true).trim()
 
-                        echo "WAR file: $WAR"
-                        echo "VERSION: $VERSION"
+                        env.VERSION = sh(
+                            script: """mvn -q \
+                                -Dexec.executable=echo \
+                                -Dexec.args='${project.version}' \
+                                org.codehaus.mojo:exec-maven-plugin:1.6.0:exec""",
+                            returnStdout: true
+                        ).trim()
 
-                        UPLOAD_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
+                        env.ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-                        echo "Uploading to: $UPLOAD_URL"
+                        echo "WAR file: ${env.WAR}"
+                        echo "VERSION: ${env.VERSION}"
+                        echo "Uploading to: ${env.ARTIFACT_URL}"
 
-                        curl -v -u "$NEXUS_USER:$NEXUS_PASS" \
-                            --upload-file "$WAR" \
-                            "$UPLOAD_URL"
-                    '''
+                        sh """
+                            curl -v -u "${NEXUS_USER}:${NEXUS_PASS}" \
+                                --upload-file "${env.WAR}" \
+                                "${env.ARTIFACT_URL}"
+                        """
+                    }
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    env.IMAGE_TAG = env.GIT_COMMIT.take(7)
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'nexus',
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )
+                ]) {
 
-                    sh """
-                        docker build \
-                          -t ${DOCKER_REPO}:${IMAGE_TAG} \
-                          -t ${DOCKER_REPO}:latest \
-                          .
-                    """
+                    script {
+                        env.IMAGE_TAG = env.GIT_COMMIT.take(7)
+
+                        sh """
+                            docker build \
+                              --build-arg NEXUS_USER=${NEXUS_USER} \
+                              --build-arg NEXUS_PASS=${NEXUS_PASS} \
+                              --build-arg ARTIFACT_URL=${ARTIFACT_URL} \
+                              --build-arg ARTIFACT_NAME=${APP_NAME}.war \
+                              -t ${DOCKER_REPO}:${IMAGE_TAG} \
+                              -t ${DOCKER_REPO}:latest \
+                              .
+                        """
+                    }
                 }
             }
         }
