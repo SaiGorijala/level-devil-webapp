@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        NEXUS_URL = "http://3.17.13.134:8081/repository/maven-snapshots/"
-        GROUP_ID_PATH = "com/example"
-        APP_NAME = "level-devil-webapp"
-        DOCKER_REPO = "sgorijala513/tomcat"
+        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-snapshots/"
+        GROUP_ID_PATH  = "com/example"
+        APP_NAME       = "level-devil-webapp"
+        DOCKER_REPO    = "sgorijala513/tomcat"
     }
 
     stages {
@@ -22,7 +22,10 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=level-devil-webapp'
+                    sh """
+                        mvn clean verify sonar:sonar \
+                        -Dsonar.projectKey=level-devil-webapp
+                    """
                 }
             }
         }
@@ -37,7 +40,7 @@ pipeline {
 
         stage('Build WAR') {
             steps {
-                sh 'mvn clean package -DskipTests=false'
+                sh "mvn clean package -DskipTests=false"
             }
         }
 
@@ -50,15 +53,15 @@ pipeline {
                 )]) {
 
                     script {
-                        // Locate WAR file
-                        def WAR = sh(script: "ls target/*.war | head -n 1", returnStdout: true).trim()
+                        // Get WAR file
+                        def WAR = sh(
+                            script: "ls target/*.war | head -n 1",
+                            returnStdout: true
+                        ).trim()
 
-                        // Extract Maven version safely
+                        // Extract version without touching ${project.version}
                         def VERSION = sh(
-                            script: """mvn -q \
-                                -Dexec.executable=echo \
-                                -Dexec.args='\\\\${project.version}' \
-                                org.codehaus.mojo:exec-maven-plugin:1.6.0:exec""",
+                            script: "grep -m1 '<version>' pom.xml | sed 's/.*<version>\\\\(.*\\\\)<\\\\/version>.*/\\\\1/'",
                             returnStdout: true
                         ).trim()
 
@@ -83,28 +86,30 @@ pipeline {
                     usernameVariable: 'NEXUS_USER',
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
-                    script {
-                        sh """
-                            docker build \
-                                --build-arg NEXUS_URL=${NEXUS_URL} \
-                                --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
-                                --build-arg APP_NAME=${APP_NAME} \
-                                --build-arg NEXUS_USER=${NEXUS_USER} \
-                                --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                                -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
-                                -t ${DOCKER_REPO}:latest \
-                                .
-                        """
-                    }
+                    sh """
+                        docker build \
+                            --build-arg NEXUS_URL=${NEXUS_URL} \
+                            --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
+                            --build-arg APP_NAME=${APP_NAME} \
+                            --build-arg NEXUS_USER=${NEXUS_USER} \
+                            --build-arg NEXUS_PASS=${NEXUS_PASS} \
+                            -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
+                            -t ${DOCKER_REPO}:latest \
+                            .
+                    """
                 }
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                script {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh """
-                        docker login -u sgorijala513 -p '${DOCKER_HUB_PASS}'
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
                         docker push ${DOCKER_REPO}:${GIT_COMMIT.take(7)}
                         docker push ${DOCKER_REPO}:latest
                     """
@@ -117,9 +122,9 @@ pipeline {
                 sshagent(['docker-server']) {
                     sh """
                         ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat-server || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat-server || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat-server -p 8080:8080 ${DOCKER_REPO}:latest'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest'
                     """
                 }
             }
@@ -128,11 +133,7 @@ pipeline {
     }
 
     post {
-        success {
-            echo "BUILD SUCCESSFUL"
-        }
-        failure {
-            echo "BUILD FAILED"
-        }
+        success { echo "BUILD SUCCESSFUL" }
+        failure { echo "BUILD FAILED" }
     }
 }
