@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         APP_NAME       = "level-devil-webapp"
-        GROUP_ID_PATH  = "com/example"     // REQUIRED for Nexus path
+        GROUP_ID_PATH  = "com/example"
         DOCKER_REPO    = "sgorijala513/tomcat"
         NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-releases/"
         SONAR_PROJECT  = "level-devil-webapp"
@@ -48,10 +48,13 @@ pipeline {
         stage('Upload WAR to Nexus') {
             steps {
                 withCredentials([
-                    usernamePassword(credentialsId: 'nexus',
-                                     usernameVariable: 'NEXUS_USER',
-                                     passwordVariable: 'NEXUS_PASS')
+                    usernamePassword(
+                        credentialsId: 'nexus',
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )
                 ]) {
+
                     sh '''
                         WAR=$(ls target/*.war | head -n 1)
 
@@ -63,7 +66,7 @@ pipeline {
                         echo "WAR file: $WAR"
                         echo "VERSION: $VERSION"
 
-                        UPLOAD_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/$VERSION/${APP_NAME}-$VERSION.war"
+                        UPLOAD_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
                         echo "Uploading to: $UPLOAD_URL"
 
@@ -99,6 +102,7 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )
                 ]) {
+
                     sh """
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                         docker push ${DOCKER_REPO}:${IMAGE_TAG}
@@ -114,3 +118,7 @@ pipeline {
             echo "SUCCESS: Docker image pushed → ${DOCKER_REPO}:${IMAGE_TAG}"
         }
         failure {
+            echo "BUILD FAILED."
+        }
+    }
+}
