@@ -3,7 +3,8 @@ pipeline {
 
     environment {
         APP_NAME       = "level-devil-webapp"
-        DOCKER_REPO    = "sgorijala513/tomcat"   // UPDATE THIS
+        GROUP_ID_PATH  = "com/example"     // REQUIRED for Nexus path
+        DOCKER_REPO    = "sgorijala513/tomcat"
         NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-releases/"
         SONAR_PROJECT  = "level-devil-webapp"
     }
@@ -47,26 +48,28 @@ pipeline {
         stage('Upload WAR to Nexus') {
             steps {
                 withCredentials([
-                    usernamePassword(
-                        credentialsId: 'nexus',   // UPDATE THIS IN JENKINS
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )
+                    usernamePassword(credentialsId: 'nexus',
+                                     usernameVariable: 'NEXUS_USER',
+                                     passwordVariable: 'NEXUS_PASS')
                 ]) {
                     sh '''
                         WAR=$(ls target/*.war | head -n 1)
 
                         VERSION=$(mvn -q \
-                          -Dexec.cleanupDaemonThreads=false \
-                          -Dexpression=project.version \
-                          -DforceStdout \
-                          org.codehaus.mojo:exec-maven-plugin:3.1.0:eval)
+                            -Dexec.executable=echo \
+                            -Dexec.args='${project.version}' \
+                            org.codehaus.mojo:exec-maven-plugin:1.6.0:exec)
 
-                        echo "Uploading WAR to Nexus..."
+                        echo "WAR file: $WAR"
+                        echo "VERSION: $VERSION"
+
+                        UPLOAD_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/$VERSION/${APP_NAME}-$VERSION.war"
+
+                        echo "Uploading to: $UPLOAD_URL"
 
                         curl -v -u "$NEXUS_USER:$NEXUS_PASS" \
-                          --upload-file "$WAR" \
-                          "${NEXUS_URL}${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
+                            --upload-file "$WAR" \
+                            "$UPLOAD_URL"
                     '''
                 }
             }
@@ -91,7 +94,7 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub',   // UPDATE THIS
+                        credentialsId: 'dockerhub',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )
@@ -111,7 +114,3 @@ pipeline {
             echo "SUCCESS: Docker image pushed → ${DOCKER_REPO}:${IMAGE_TAG}"
         }
         failure {
-            echo "BUILD FAILED."
-        }
-    }
-}
