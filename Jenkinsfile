@@ -2,15 +2,10 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME       = "level-devil-webapp"
-        GROUP_ID_PATH  = "com/example"
-        DOCKER_REPO    = "sgorijala513/tomcat"
-        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-snapshots/"
-        SONAR_PROJECT  = "level-devil-webapp"
-
-        // Remote Tomcat Docker host
-        REMOTE_HOST    = "ubuntu@YOUR_TOMCAT_SERVER_IP"
-        REMOTE_KEY     = "ssh-key"
+        NEXUS_URL = "http://3.17.13.134:8081/repository/maven-snapshots/"
+        GROUP_ID_PATH = "com/example"
+        APP_NAME = "level-devil-webapp"
+        DOCKER_REPO = "sgorijala513/tomcat"
     }
 
     stages {
@@ -27,10 +22,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    sh """
-                        mvn clean verify sonar:sonar \
-                        -Dsonar.projectKey=${SONAR_PROJECT}
-                    """
+                    sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=level-devil-webapp'
                 }
             }
         }
@@ -45,7 +37,7 @@ pipeline {
 
         stage('Build WAR') {
             steps {
-                sh "mvn clean package -DskipTests=false"
+                sh 'mvn clean package -DskipTests=false'
             }
         }
 
@@ -58,23 +50,26 @@ pipeline {
                 )]) {
 
                     script {
-                        WAR = sh(script: "ls target/*.war | head -n 1", returnStdout: true).trim()
+                        // Locate WAR file
+                        def WAR = sh(script: "ls target/*.war | head -n 1", returnStdout: true).trim()
 
-                        VERSION = sh(
-                            script: """mvn -q -Dexec.executable=echo \
-                                -Dexec.args='${project.version}' \
+                        // Extract Maven version safely
+                        def VERSION = sh(
+                            script: """mvn -q \
+                                -Dexec.executable=echo \
+                                -Dexec.args='\\\\${project.version}' \
                                 org.codehaus.mojo:exec-maven-plugin:1.6.0:exec""",
                             returnStdout: true
                         ).trim()
 
-                        ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
+                        def ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-                        echo "Uploading → ${ARTIFACT_URL}"
+                        echo "Uploading WAR → ${ARTIFACT_URL}"
 
                         sh """
-                            curl -u "$NEXUS_USER:$NEXUS_PASS" \
+                            curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
                                  --upload-file ${WAR} \
-                                 ${ARTIFACT_URL}
+                                 "${ARTIFACT_URL}"
                         """
                     }
                 }
@@ -88,20 +83,17 @@ pipeline {
                     usernameVariable: 'NEXUS_USER',
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
-
                     script {
-                        env.IMAGE_TAG = env.GIT_COMMIT.take(7)
-
                         sh """
                             docker build \
-                              --build-arg NEXUS_URL=${NEXUS_URL} \
-                              --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
-                              --build-arg APP_NAME=${APP_NAME} \
-                              --build-arg VERSION=${VERSION} \
-                              --build-arg NEXUS_USER=${NEXUS_USER} \
-                              --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                              -t ${DOCKER_REPO}:${IMAGE_TAG} \
-                              -t ${DOCKER_REPO}:latest .
+                                --build-arg NEXUS_URL=${NEXUS_URL} \
+                                --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
+                                --build-arg APP_NAME=${APP_NAME} \
+                                --build-arg NEXUS_USER=${NEXUS_USER} \
+                                --build-arg NEXUS_PASS=${NEXUS_PASS} \
+                                -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
+                                -t ${DOCKER_REPO}:latest \
+                                .
                         """
                     }
                 }
@@ -110,15 +102,10 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-
+                script {
                     sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${DOCKER_REPO}:${IMAGE_TAG}
+                        docker login -u sgorijala513 -p '${DOCKER_HUB_PASS}'
+                        docker push ${DOCKER_REPO}:${GIT_COMMIT.take(7)}
                         docker push ${DOCKER_REPO}:latest
                     """
                 }
@@ -127,30 +114,25 @@ pipeline {
 
         stage('Deploy to Tomcat Docker Server') {
             steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: REMOTE_KEY,
-                    keyFileVariable: 'SSH_KEY'
-                )]) {
-
+                sshagent(['docker-server']) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i $SSH_KEY ${REMOTE_HOST} "
-                            docker pull ${DOCKER_REPO}:${IMAGE_TAG}
-                            docker stop tomcat-app || true
-                            docker rm tomcat-app || true
-                            docker run -d --name tomcat-app -p 8080:8080 ${DOCKER_REPO}:${IMAGE_TAG}
-                        "
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat-server || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat-server || true'
+                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat-server -p 8080:8080 ${DOCKER_REPO}:latest'
                     """
                 }
             }
         }
+
     }
 
     post {
         success {
-            echo "SUCCESS: Deployed ${DOCKER_REPO}:${IMAGE_TAG} to Remote Tomcat Server"
+            echo "BUILD SUCCESSFUL"
         }
         failure {
-            echo "BUILD FAILED."
+            echo "BUILD FAILED"
         }
     }
 }
