@@ -17,47 +17,46 @@ jobs:
       DOCKER_REPO: "sgorijala513/tomcat"
 
     steps:
-      # === Checkout Code (same as Jenkins 'Checkout Code' stage) ===
-      - name: Checkout code
+
+      # ----------- CHECKOUT -----------
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # === Setup Java (needed for Maven build) ===
-      - name: Set up JDK
+      # ----------- JAVA + MAVEN SETUP -----------
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'maven'
+          distribution: "temurin"
+          java-version: "17"
+          cache: "maven"
 
-      # === Show Commit SHA (similar to echo GIT_COMMIT) ===
-      - name: Show commit
-        run: echo "Commit: $GITHUB_SHA"
+      - name: Show Commit SHA
+        run: echo "Commit SHA = $GITHUB_SHA"
 
-      # === SonarQube Analysis (similar to 'SonarQube Analysis' stage) ===
-      - name: SonarQube analysis
+      # ----------- SONARQUBE ANALYSIS -----------
+      - name: SonarQube Scan
         env:
-          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
         run: |
           mvn -B clean verify sonar:sonar \
             -Dsonar.projectKey=level-devil-webapp \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
 
-      # === SonarQube Quality Gate (approx. Jenkins waitForQualityGate) ===
-      # NOTE: this uses SonarQube GitHub Action to wait for quality gate result.
-      - name: SonarQube Quality Gate
+      # ----------- SONARQUBE QUALITY GATE -----------
+      - name: Wait for Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
 
-      # === Build WAR (same as 'Build WAR' stage) ===
+      # ----------- BUILD WAR -----------
       - name: Build WAR
         run: mvn -B clean package -DskipTests=false
 
-      # === Upload WAR to Nexus (same logic as Jenkins) ===
+      # ----------- UPLOAD WAR TO NEXUS -----------
       - name: Upload WAR to Nexus
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -65,22 +64,21 @@ jobs:
         run: |
           WAR=$(ls target/*.war | head -n 1)
           VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
+
           ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-          echo "WAR file: $WAR"
-          echo "VERSION: $VERSION"
           echo "Uploading WAR → $ARTIFACT_URL"
 
           curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
-               --upload-file "${WAR}" \
-               "${ARTIFACT_URL}"
+               --upload-file "$WAR" \
+               "$ARTIFACT_URL"
 
-      # === Login to Docker Hub (before build+push) ===
-      - name: Docker Hub login
+      # ----------- DOCKER LOGIN -----------
+      - name: Login to Docker Hub
         run: |
-          echo "${{ secrets.DOCKER_HUB_PASS }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
+          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
 
-      # === Build Docker Image (same as 'Build Docker Image' stage) ===
+      # ----------- BUILD DOCKER IMAGE -----------
       - name: Build Docker image
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -88,8 +86,6 @@ jobs:
         run: |
           VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
           SHORT_SHA=${GITHUB_SHA::7}
-
-          echo "Building docker image with VERSION=${VERSION}, TAG=${SHORT_SHA}"
 
           docker build \
             --build-arg NEXUS_URL=${NEXUS_URL} \
@@ -99,18 +95,17 @@ jobs:
             --build-arg NEXUS_USER=${NEXUS_USER} \
             --build-arg NEXUS_PASS=${NEXUS_PASS} \
             -t ${DOCKER_REPO}:${SHORT_SHA} \
-            -t ${DOCKER_REPO}:latest \
-            .
+            -t ${DOCKER_REPO}:latest .
 
-      # === Push Docker Image (same as 'Push Docker Image' stage) ===
+      # ----------- PUSH DOCKER IMAGE -----------
       - name: Push Docker image
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           docker push ${DOCKER_REPO}:${SHORT_SHA}
           docker push ${DOCKER_REPO}:latest
 
-      # === Deploy to Tomcat Docker Server (same as Jenkins SSH deploy) ===
-      - name: Deploy to Tomcat Docker Server
+      # ----------- DEPLOY TO REMOTE DOCKER SERVER -----------
+      - name: Deploy to Remote Tomcat Server
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 3.17.13.134
