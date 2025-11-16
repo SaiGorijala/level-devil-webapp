@@ -18,21 +18,28 @@ jobs:
 
     steps:
 
+      # ---------------------------------------
+      # CHECKOUT
+      # ---------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ---------------------------------------
+      # JAVA
+      # ---------------------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
-          cache: "maven"
+          distribution: temurin
+          java-version: 17
+          cache: maven
 
       - name: Show Commit SHA
         run: echo "Commit SHA = $GITHUB_SHA"
 
-
-      # ----------- FIXED SONARQUBE SCAN WITH DEBUGGING -----------
+      # ---------------------------------------
+      # SONARQUBE SCAN (WORKING DEBUG VERSION)
+      # ---------------------------------------
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -40,6 +47,7 @@ jobs:
         run: |
           echo "Using Sonar URL: $SONAR_HOST_URL"
           echo "Running Sonar Scan..."
+
           mvn -X -e clean verify sonar:sonar \
             -DskipTests \
             -Dsonar.projectKey=level-devil-webapp \
@@ -47,25 +55,47 @@ jobs:
             -Dsonar.login=$SONAR_TOKEN
 
           echo "Checking scannerwork folder..."
-          ls -R .scannerwork || echo "Scannerwork directory not created!"
+          ls -R .scannerwork || echo "scannerwork directory not created!"
 
+      # ---------------------------------------
+      # INSTALL jq FOR QUALITY GATE API
+      # ---------------------------------------
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
-      # ----------- SONARQUBE QUALITY GATE -----------
-      - name: Wait for Quality Gate
+      # ---------------------------------------
+      # QUALITY GATE (SELF-HOSTED SONARQUBE)
+      # ---------------------------------------
+      - name: Check Quality Gate (Self-hosted SonarQube)
         if: success()
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          echo "Checking Quality Gate status..."
 
+          STATUS=$(curl -s -u "${SONAR_TOKEN}:" \
+            "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=level-devil-webapp" \
+            | jq -r '.projectStatus.status')
 
-      # ----------- BUILD WAR -----------
+          echo "Quality Gate result: $STATUS"
+
+          if [ "$STATUS" != "OK" ]; then
+            echo "❌ Quality Gate FAILED"
+            exit 1
+          fi
+
+          echo "✅ Quality Gate PASSED"
+
+      # ---------------------------------------
+      # BUILD WAR
+      # ---------------------------------------
       - name: Build WAR
         run: mvn -B clean package -DskipTests=false
 
-
-      # ----------- UPLOAD WAR TO NEXUS -----------
+      # ---------------------------------------
+      # UPLOAD WAR TO NEXUS
+      # ---------------------------------------
       - name: Upload WAR to Nexus
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -73,22 +103,25 @@ jobs:
         run: |
           WAR=$(ls target/*.war | head -n 1)
           VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
+
           ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-          echo "Uploading WAR to Nexus → $ARTIFACT_URL"
+          echo "Uploading WAR → $ARTIFACT_URL"
 
           curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
                --upload-file "$WAR" \
                "$ARTIFACT_URL"
 
-
-      # ----------- DOCKER LOGIN -----------
+      # ---------------------------------------
+      # DOCKER LOGIN
+      # ---------------------------------------
       - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USER }}" --password-stdin
 
-
-      # ----------- BUILD DOCKER IMAGE -----------
+      # ---------------------------------------
+      # BUILD DOCKER IMAGE
+      # ---------------------------------------
       - name: Build Docker image
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -107,16 +140,18 @@ jobs:
             -t ${DOCKER_REPO}:${SHORT_SHA} \
             -t ${DOCKER_REPO}:latest .
 
-
-      # ----------- PUSH DOCKER IMAGE -----------
+      # ---------------------------------------
+      # PUSH DOCKER IMAGE
+      # ---------------------------------------
       - name: Push Docker image
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           docker push ${DOCKER_REPO}:${SHORT_SHA}
           docker push ${DOCKER_REPO}:latest
 
-
-      # ----------- DEPLOY TO REMOTE DOCKER SERVER -----------
+      # ---------------------------------------
+      # DEPLOY USING SSH
+      # ---------------------------------------
       - name: Deploy to Remote Tomcat Server
         uses: appleboy/ssh-action@v1.0.0
         with:
