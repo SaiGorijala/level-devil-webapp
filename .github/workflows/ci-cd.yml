@@ -37,7 +37,7 @@ jobs:
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           mvn -B clean verify sonar:sonar \
             -Dsonar.projectKey=level-devil-webapp \
@@ -50,7 +50,7 @@ jobs:
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       # ----------- BUILD WAR -----------
       - name: Build WAR
@@ -76,7 +76,7 @@ jobs:
       # ----------- DOCKER LOGIN -----------
       - name: Login to Docker Hub
         run: |
-          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USER }}" --password-stdin
 
       # ----------- BUILD DOCKER IMAGE -----------
       - name: Build Docker image
