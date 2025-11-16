@@ -1,156 +1,123 @@
-pipeline {
-    agent any
+name: CI-CD Level Devil Webapp
 
-    environment {
-        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-snapshots/"
-        GROUP_ID_PATH  = "com/example"
-        APP_NAME       = "level-devil-webapp"
-        DOCKER_REPO    = "sgorijala513/tomcat"
-    }
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
-    stages {
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
 
-        stage('Checkout Code') {
-            steps {
-                checkout scm
-                script {
-                    echo "Commit: ${env.GIT_COMMIT}"
-                }
-            }
-        }
+    env:
+      NEXUS_URL: "http://3.17.13.134:8081/repository/maven-snapshots/"
+      GROUP_ID_PATH: "com/example"
+      APP_NAME: "level-devil-webapp"
+      DOCKER_REPO: "sgorijala513/tomcat"
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh """
-                        mvn clean verify sonar:sonar \
-                        -Dsonar.projectKey=level-devil-webapp
-                    """
-                }
-            }
-        }
+    steps:
+      # === Checkout Code (same as Jenkins 'Checkout Code' stage) ===
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+      # === Setup Java (needed for Maven build) ===
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
 
-        stage('Build WAR') {
-            steps {
-                sh "mvn clean package -DskipTests=false"
-            }
-        }
+      # === Show Commit SHA (similar to echo GIT_COMMIT) ===
+      - name: Show commit
+        run: echo "Commit: $GITHUB_SHA"
 
-        stage('Upload WAR to Nexus') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
+      # === SonarQube Analysis (similar to 'SonarQube Analysis' stage) ===
+      - name: SonarQube analysis
+        env:
+          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn -B clean verify sonar:sonar \
+            -Dsonar.projectKey=level-devil-webapp \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN
 
-                    script {
+      # === SonarQube Quality Gate (approx. Jenkins waitForQualityGate) ===
+      # NOTE: this uses SonarQube GitHub Action to wait for quality gate result.
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_ULR: ${{ secrets.SONAR_HOST_URL }}
 
-                        // WAR file name
-                        def WAR = sh(
-                            script: "ls target/*.war | head -n 1",
-                            returnStdout: true
-                        ).trim()
+      # === Build WAR (same as 'Build WAR' stage) ===
+      - name: Build WAR
+        run: mvn -B clean package -DskipTests=false
 
-                        // Extract version from POM
-                        def VERSION = sh(
-                            script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
-                            returnStdout: true
-                        ).trim()
+      # === Upload WAR to Nexus (same logic as Jenkins) ===
+      - name: Upload WAR to Nexus
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+        run: |
+          WAR=$(ls target/*.war | head -n 1)
+          VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
+          ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-                        // Upload path
-                        def ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
+          echo "WAR file: $WAR"
+          echo "VERSION: $VERSION"
+          echo "Uploading WAR → $ARTIFACT_URL"
 
-                        echo "Uploading WAR → ${ARTIFACT_URL}"
+          curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
+               --upload-file "${WAR}" \
+               "${ARTIFACT_URL}"
 
-                        sh """
-                            curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
-                                 --upload-file ${WAR} \
-                                 "${ARTIFACT_URL}"
-                        """
-                    }
-                }
-            }
-        }
+      # === Login to Docker Hub (before build+push) ===
+      - name: Docker Hub login
+        run: |
+          echo "${{ secrets.DOCKER_HUB_PASS }}" | docker login -u "${{ secrets.DOCKER_HUB_USER }}" --password-stdin
 
-        stage('Build Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-                    script {
+      # === Build Docker Image (same as 'Build Docker Image' stage) ===
+      - name: Build Docker image
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+        run: |
+          VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
+          SHORT_SHA=${GITHUB_SHA::7}
 
-                        // Extract VERSION again
-                        def VERSION = sh(
-                            script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
-                            returnStdout: true
-                        ).trim()
+          echo "Building docker image with VERSION=${VERSION}, TAG=${SHORT_SHA}"
 
-                        echo "Building docker image with VERSION=${VERSION}"
+          docker build \
+            --build-arg NEXUS_URL=${NEXUS_URL} \
+            --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
+            --build-arg APP_NAME=${APP_NAME} \
+            --build-arg VERSION=${VERSION} \
+            --build-arg NEXUS_USER=${NEXUS_USER} \
+            --build-arg NEXUS_PASS=${NEXUS_PASS} \
+            -t ${DOCKER_REPO}:${SHORT_SHA} \
+            -t ${DOCKER_REPO}:latest \
+            .
 
-                        sh """
-                            docker build \
-                                --build-arg NEXUS_URL=${NEXUS_URL} \
-                                --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
-                                --build-arg APP_NAME=${APP_NAME} \
-                                --build-arg VERSION=${VERSION} \
-                                --build-arg NEXUS_USER=${NEXUS_USER} \
-                                --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                                -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
-                                -t ${DOCKER_REPO}:latest \
-                                .
-                        """
-                    }
-                }
-            }
-        }
+      # === Push Docker Image (same as 'Push Docker Image' stage) ===
+      - name: Push Docker image
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          docker push ${DOCKER_REPO}:${SHORT_SHA}
+          docker push ${DOCKER_REPO}:latest
 
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-user',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                        docker push ${DOCKER_REPO}:${GIT_COMMIT.take(7)}
-                        docker push ${DOCKER_REPO}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Tomcat Docker Server') {
-            steps {
-
-                // The SSH key ID must match Jenkins credentials EXACTLY
-                sshagent(['docker-server']) {
-
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat 2>/dev/null || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat 2>/dev/null || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest'
-                    """
-                }
-            }
-        }
-
-    }
-
-    post {
-        success { echo "BUILD SUCCESSFUL" }
-        failure { echo "BUILD FAILED" }
-    }
-}
+      # === Deploy to Tomcat Docker Server (same as Jenkins SSH deploy) ===
+      - name: Deploy to Tomcat Docker Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 3.17.13.134
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker pull ${DOCKER_REPO}:latest
+            docker stop tomcat 2>/dev/null || true
+            docker rm tomcat 2>/dev/null || true
+            docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest
