@@ -18,15 +18,15 @@ jobs:
 
     steps:
 
-      # ---------------------------------------
+      # ======================================
       # CHECKOUT
-      # ---------------------------------------
+      # ======================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------
-      # JAVA
-      # ---------------------------------------
+      # ======================================
+      # JAVA SETUP
+      # ======================================
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -37,9 +37,10 @@ jobs:
       - name: Show Commit SHA
         run: echo "Commit SHA = $GITHUB_SHA"
 
-      # ---------------------------------------
-      # SONARQUBE SCAN (WORKING DEBUG VERSION)
-      # ---------------------------------------
+
+      # ======================================
+      # SONARQUBE SCAN (SELF-HOSTED)
+      # ======================================
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -57,15 +58,17 @@ jobs:
           echo "Checking scannerwork folder..."
           ls -R .scannerwork || echo "scannerwork directory not created!"
 
-      # ---------------------------------------
+
+      # ======================================
       # INSTALL jq FOR QUALITY GATE API
-      # ---------------------------------------
+      # ======================================
       - name: Install jq
         run: sudo apt-get install -y jq
 
-      # ---------------------------------------
-      # QUALITY GATE (SELF-HOSTED SONARQUBE)
-      # ---------------------------------------
+
+      # ======================================
+      # QUALITY GATE (API METHOD — ALWAYS WORKS)
+      # ======================================
       - name: Check Quality Gate (Self-hosted SonarQube)
         if: success()
         env:
@@ -87,15 +90,17 @@ jobs:
 
           echo "✅ Quality Gate PASSED"
 
-      # ---------------------------------------
+
+      # ======================================
       # BUILD WAR
-      # ---------------------------------------
+      # ======================================
       - name: Build WAR
         run: mvn -B clean package -DskipTests=false
 
-      # ---------------------------------------
+
+      # ======================================
       # UPLOAD WAR TO NEXUS
-      # ---------------------------------------
+      # ======================================
       - name: Upload WAR to Nexus
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -103,7 +108,6 @@ jobs:
         run: |
           WAR=$(ls target/*.war | head -n 1)
           VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
-
           ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
           echo "Uploading WAR → $ARTIFACT_URL"
@@ -112,16 +116,18 @@ jobs:
                --upload-file "$WAR" \
                "$ARTIFACT_URL"
 
-      # ---------------------------------------
+
+      # ======================================
       # DOCKER LOGIN
-      # ---------------------------------------
+      # ======================================
       - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USER }}" --password-stdin
 
-      # ---------------------------------------
+
+      # ======================================
       # BUILD DOCKER IMAGE
-      # ---------------------------------------
+      # ======================================
       - name: Build Docker image
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -140,25 +146,30 @@ jobs:
             -t ${DOCKER_REPO}:${SHORT_SHA} \
             -t ${DOCKER_REPO}:latest .
 
-      # ---------------------------------------
+
+      # ======================================
       # PUSH DOCKER IMAGE
-      # ---------------------------------------
+      # ======================================
       - name: Push Docker image
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           docker push ${DOCKER_REPO}:${SHORT_SHA}
           docker push ${DOCKER_REPO}:latest
 
-      # ---------------------------------------
-      # DEPLOY USING SSH
-      # ---------------------------------------
+
+      # ======================================
+      # DEPLOY VIA SSH (FIXED `invalid reference format`)
+      # ======================================
       - name: Deploy to Remote Tomcat Server
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 3.17.13.134
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DOCKER_REPO
           script: |
+            echo "Using Docker Repo: $DOCKER_REPO"
+
             docker pull ${DOCKER_REPO}:latest
             docker stop tomcat 2>/dev/null || true
             docker rm tomcat 2>/dev/null || true
