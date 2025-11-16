@@ -32,24 +32,25 @@ jobs:
         run: echo "Commit SHA = $GITHUB_SHA"
 
 
-      # ----------- FIXED SONARQUBE SCAN -----------
+      # ----------- FIXED SONARQUBE SCAN WITH DEBUGGING -----------
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           echo "Using Sonar URL: $SONAR_HOST_URL"
-          mvn -B clean verify sonar:sonar \
+          echo "Running Sonar Scan..."
+          mvn -X -e clean verify sonar:sonar \
             -DskipTests \
             -Dsonar.projectKey=level-devil-webapp \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
 
-          echo "Scannerwork contents:"
-          ls -R .scannerwork || echo "scannerwork MISSING"
+          echo "Checking scannerwork folder..."
+          ls -R .scannerwork || echo "Scannerwork directory not created!"
 
 
-      # ----------- FIXED QUALITY GATE -----------
+      # ----------- SONARQUBE QUALITY GATE -----------
       - name: Wait for Quality Gate
         if: success()
         uses: SonarSource/sonarqube-quality-gate-action@v1
