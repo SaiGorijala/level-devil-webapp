@@ -18,11 +18,9 @@ jobs:
 
     steps:
 
-      # ----------- CHECKOUT -----------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ----------- JAVA + MAVEN SETUP -----------
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -33,28 +31,38 @@ jobs:
       - name: Show Commit SHA
         run: echo "Commit SHA = $GITHUB_SHA"
 
-      # ----------- SONARQUBE ANALYSIS -----------
+
+      # ----------- FIXED SONARQUBE SCAN -----------
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
+          echo "Using Sonar URL: $SONAR_HOST_URL"
           mvn -B clean verify sonar:sonar \
+            -DskipTests \
             -Dsonar.projectKey=level-devil-webapp \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
 
-      # ----------- SONARQUBE QUALITY GATE -----------
+          echo "Scannerwork contents:"
+          ls -R .scannerwork || echo "scannerwork MISSING"
+
+
+      # ----------- FIXED QUALITY GATE -----------
       - name: Wait for Quality Gate
+        if: success()
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
+
       # ----------- BUILD WAR -----------
       - name: Build WAR
         run: mvn -B clean package -DskipTests=false
+
 
       # ----------- UPLOAD WAR TO NEXUS -----------
       - name: Upload WAR to Nexus
@@ -64,19 +72,20 @@ jobs:
         run: |
           WAR=$(ls target/*.war | head -n 1)
           VERSION=$(grep -m1 "<version>" pom.xml | sed 's|.*<version>||; s|</version>.*||')
-
           ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
 
-          echo "Uploading WAR → $ARTIFACT_URL"
+          echo "Uploading WAR to Nexus → $ARTIFACT_URL"
 
           curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
                --upload-file "$WAR" \
                "$ARTIFACT_URL"
 
+
       # ----------- DOCKER LOGIN -----------
       - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USER }}" --password-stdin
+
 
       # ----------- BUILD DOCKER IMAGE -----------
       - name: Build Docker image
@@ -97,12 +106,14 @@ jobs:
             -t ${DOCKER_REPO}:${SHORT_SHA} \
             -t ${DOCKER_REPO}:latest .
 
+
       # ----------- PUSH DOCKER IMAGE -----------
       - name: Push Docker image
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
           docker push ${DOCKER_REPO}:${SHORT_SHA}
           docker push ${DOCKER_REPO}:latest
+
 
       # ----------- DEPLOY TO REMOTE DOCKER SERVER -----------
       - name: Deploy to Remote Tomcat Server
