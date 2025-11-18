@@ -1,364 +1,251 @@
-I can't directly create a downloadable file on your computer, but I can ensure the redeem.md content is perfectly formatted for you to copy, save, and push to GitHub.
-
-Here is the entire, correct Markdown content for your redeem.md file in one block:
-
-Markdown
-# 🚀 Level Devil WebApp – Complete CI/CD Pipeline
-### *Jenkins • GitHub • SonarQube • Nexus • Docker • DockerHub • Tomcat on EC2*
-
-This document contains **every step, configuration, script, Dockerfile, and Jenkinsfile** required to build a fully functioning CI/CD pipeline from scratch.
-
-It is intentionally written so **even someone with zero experience** can follow and succeed.
+# Complete CI/CD Pipeline Documentation  
+## Java WebApp • Jenkins • Docker • SonarQube • Nexus • Custom Tomcat • GitHub
 
 ---
 
-# 📘 Table of Contents
-1. [Project Overview](#project-overview)
-2. [Architecture](#architecture)
-3. [Features](#features)
-4. [Full Technology Stack](#full-technology-stack)
-5. [Prerequisites](#prerequisites)
-6. [EC2 Setup](#ec2-setup)
-7. [Install Docker](#install-docker)
-8. [Install Jenkins](#install-jenkins)
-9. [Install SonarQube](#install-sonarqube)
-10. [Install Nexus Repository](#install-nexus-repository)
-11. [Configure GitHub](#configure-github)
-12. [Jenkins Credentials Required](#jenkins-credentials-required)
-13. [Project Structure](#project-structure)
-14. [Dockerfile](#dockerfile)
-15. [Jenkinsfile](#jenkinsfile)
-16. [Understanding the Pipeline](#understanding-the-pipeline)
-17. [EC2 Deployment Setup](#ec2-deployment-setup)
-18. [Accessing the Application](#accessing-the-application)
-19. [Troubleshooting Guide](#troubleshooting-guide)
-20. [Author](#author)
+# 📘 1. Project Overview
+
+This project implements a complete CI/CD pipeline using:
+
+- **AWS EC2 t3.large (16GB storage)**
+- **Docker** to run all services
+- **Jenkins** for CI/CD automation
+- **SonarQube** for code quality analysis
+- **Nexus Repository** for artifact storage
+- **Custom Tomcat Server** as a deployment target
+- **DockerHub** for hosting production images
+- **GitHub** as SCM + Jenkinsfile + Dockerfile
+
+This documentation is written so even someone **with zero experience** can follow and complete the project.
 
 ---
 
-# 📌 Project Overview
+# 🚀 2. EC2 Setup
 
-This project provides a **complete CI/CD pipeline** for deploying a Java WAR-based web application automatically to a Tomcat server running inside Docker on AWS EC2.
+## 2.1 Launch the EC2 Instance
+- Instance Type: **t3.large**
+- Storage: **16GB**
+- OS: Ubuntu 22.04 recommended
+- Open ports:
+  - 22 (SSH)
+  - 8080 (Tomcat)
+  - 8081 (Nexus)
+  - 8083 (Jenkins)
+  - 9000 (SonarQube)
 
-Every code push triggers:
-1. Jenkins pipeline
-2. SonarQube analysis
-3. Maven build → WAR
-4. Upload artifact to Nexus
-5. Docker build using WAR from Nexus
-6. Push Docker image to DockerHub
-7. Deploy to EC2 over SSH
+## 2.2 Update the System
 
-This is production-level automation.
+```
+sudo su
+apt update && apt upgrade -y
+```
 
----
+# 🐳 3. Install Docker
 
-# 🏗 Architecture
-GitHub → Jenkins → SonarQube → Nexus → Docker Build → DockerHub → EC2 → Tomcat Container → App
+## 3.1 Install Docker Engine
 
----
+```
+apt install docker.io -y
+systemctl enable docker
+systemctl start docker
+```
 
-# ✨ Features
-* ✔ Fully automated CI/CD pipeline
-* ✔ Java + Maven WAR packaging
-* ✔ SonarQube quality gate enforcement
-* ✔ Nexus artifact management
-* ✔ Multi-stage Docker build
-* ✔ DockerHub integration
-* ✔ Automated deployment to EC2
-* ✔ Zero-downtime restart of Tomcat container
+## 3.2 Add User to Docker Group
 
----
+```
+usermod -aG docker ubuntu
+```
 
-# 🧰 Full Technology Stack
-* **Java 17**
-* **Maven**
-* **Jenkins**
-* **SonarQube**
-* **Nexus Repository Manager 3**
-* **Docker & DockerHub**
-* **Tomcat 10**
-* **AWS EC2 (Ubuntu 22.04)**
+# 🧩 4. Clone the Java WebApp Repository
 
----
+```
+git clone <your-github-repo>
+cd <repo>
+```
 
-# 🧩 Prerequisites
-Before starting, you need:
-* AWS EC2 instance for Jenkins / Nexus / SonarQube
-* AWS EC2 instance for Deployment (Tomcat)
-* DockerHub account
-* GitHub account
-* Basic Linux SSH access
-* Jenkins installed with required plugins
+This repo contains:
+Java WebApp
+Jenkinsfile
+Dockerfile
 
----
 
-# 🖥 EC2 Setup
-Use Ubuntu 22.04 for all servers.
+# 📦 5. Deploy DevOps Tools in Docker Containers
 
-Update system:
-```bash
-sudo apt update && sudo apt upgrade -y
-Install required packages:
+All services run on one EC2 instance via Docker.
 
-Bash
-sudo apt install -y unzip curl vim git
-🐳 Install Docker
-Bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg lsb-release
-sudo mkdir -p /etc/apt/keyrings
+## 5.1 Jenkins
 
-curl -fsSL [https://download.docker.com/linux/ubuntu/gpg](https://download.docker.com/linux/ubuntu/gpg) |
-sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-[https://download.docker.com/linux/ubuntu](https://download.docker.com/linux/ubuntu) $(lsb_release -cs) stable" |
-sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker ubuntu
-Reboot:
-
-Bash
-sudo reboot
-🔧 Install Jenkins
-Bash
-docker run -d --name jenkins \
-  -p 8080:8080 -p 50000:50000 \
+```
+docker run -d \
+  --name jenkins \
+  -p 8083:8080 \
   -v jenkins_home:/var/jenkins_home \
   jenkins/jenkins:lts
-Get the initial admin password:
+```
 
-Bash
-docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-Install plugins:
+## 5.2 SonarQube
+
+```
+docker run -d \
+  --name sonarqube \
+  -p 9000:9000 \
+  sonarqube:lts
+```
+
+## 5.3 Nexus Repository Manager
+
+```
+docker run -d \
+  --name nexus \
+  -p 8081:8081 \
+  sonatype/nexus3
+```
+
+
+# 🐱‍🏍 6. Custom Tomcat Server Setup
+
+The default Tomcat container did not serve applications correctly because Tomcat stored files in:
+```
+/usr/local/tomcat/webapps.dist
+```
+But Tomcat actually serves applications from:
+
+```
+/usr/local/tomcat/webapps
+```
+
+## ✔ 6.1 Fixed by Moving Files
+
+```
+cp -r /usr/local/tomcat/webapps.dist/* /usr/local/tomcat/webapps/
+```
+
+## ✔ 6.2 Modified Configuration Files
+
+```
+settings.xml
+```
+
+Configured Maven + Nexus repository access.
+
+```
+context.xml
+```
+
+Enabled manager access for remote deployments.
+
+## ✔ 6.3 Created a Custom Tomcat Image
+
+After fixing configuration:
+
+```
+docker commit <tomcat-container-id> custom-tomcat:v1
+docker tag custom-tomcat:v1 <dockerhub-username>/custom-tomcat:v1
+docker push <dockerhub-username>/custom-tomcat:v1
+```
+This custom Tomcat image is now the base image used for deployments.
+
+# 🛠 7. Jenkins Setup
+
+## 7.1 Installed Required Plugins
 
 GitHub
-
-Maven Integration
-
-SonarQube Scanner
-
+Docker Pipeline
 Pipeline
-
+Maven Integration
+SonarQube Scanner
 SSH Agent
+Nexus Artifact Uploader
 
-🔍 Install SonarQube
-Bash
-docker run -d --name sonarqube \
- -p 9000:9000 \
- sonarqube:lts
-Login: admin / admin Create a token for Jenkins.
 
-📦 Install Nexus Repository Manager
-Bash
-docker run -d --name nexus \
- -p 8081:8081 \
- -v nexus-data:/nexus-data \
- sonatype/nexus3
-Access Nexus → create maven-snapshots repo.
+## 7.2 Configured Credentials
+Credential ID	Type	Purpose
+docker-server-key	SSH Private Key	EC2 deployment
+dockerhub-user	User/Password	Push to DockerHub
+nexus	User/Password	Upload to Nexus
+github-token	PAT	GitHub webhooks
 
-🔗 Configure GitHub
-Create a new repository Add the Jenkins webhook:
 
-http://<JENKINS-IP>:8080/github-webhook/
+## 7.3 Added Tools in Jenkins
+Maven
+SonarQube Scanner
+JDK
+Git
 
-Generate Personal Access Token (classic)
 
-🔐 Jenkins Credentials Required
-ID	Type	Use
-nexus	username + password	Upload WAR to Nexus
-dockerhub-user	username + token	Push to DockerHub
-docker-server	SSH private key	Connect to EC2 deploy server
-sonar-token	secret text	SonarQube auth
-github-token	secret text	GitHub integration
-📁 Project Structure
-level-devil-webapp/
-├── pom.xml
-├── Jenkinsfile
-├── Dockerfile
-├── src/
-└── redeem.md
-🐳 Dockerfile
-Dockerfile
-# -------- Stage 1: Downloader --------
-FROM eclipse-temurin:17-jre AS downloader
+# 📑 8. Jenkinsfile Pipeline Summary
+The pipeline performs:
+Checkout from GitHub
+SonarQube Analysis
+Quality Gate Check
+Build WAR using Maven
+Upload WAR to Nexus
+Build Docker Image using Custom Tomcat
+Push Docker Image to DockerHub
+Deploy to EC2 Tomcat via SSH
+The pipeline file is stored in GitHub so all changes automatically trigger Jenkins.
 
-ARG NEXUS_URL
-ARG GROUP_ID_PATH
-ARG APP_NAME
-ARG VERSION
-ARG NEXUS_USER
-ARG NEXUS_PASS
 
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# 🐳 9. Dockerfile Summary
+This project uses a multi-stage Dockerfile:
+Stage 1 — Downloader
+Accepts build arguments (Nexus URL, version, credentials)
+Downloads the WAR from Nexus
+Stage 2 — Tomcat Deployment
+Uses your custom Tomcat base image
+Copies downloaded WAR to ROOT.war
 
-RUN ARTIFACT_URL="${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war" \
-  && echo "Downloading WAR from: ${ARTIFACT_URL}" \
-  && curl -u "${NEXUS_USER}:${NEXUS_PASS}" -L "${ARTIFACT_URL}" -o /tmp/app.war
 
-# -------- Stage 2: Tomcat --------
-FROM tomcat:10.1-jdk17-temurin
+# 🔁 10. Complete CI/CD Workflow
 
-RUN rm -rf /usr/local/tomcat/webapps/ROOT
+Here is the full automation pipeline:
+Developer pushes code → GitHub
+GitHub webhook → Jenkins starts build
+Jenkins clones repository
+Jenkins runs SonarQube analysis
+Jenkins builds WAR file
+WAR uploaded to Nexus Repository
+Jenkins builds Docker image
+Image pushed to DockerHub
+Jenkins SSHs into EC2
+Jenkins pulls new Docker image
+Old Tomcat container is removed
+New container starts with updated ROOT.war
+Tomcat serves the latest version of the application
 
-COPY --from=downloader /tmp/app.war /usr/local/tomcat/webapps/ROOT.war
-📜 Jenkinsfile (Final)
-Groovy
-pipeline {
-    agent any
 
-    environment {
-        NEXUS_URL      = "[http://3.17.13.134:8081/repository/maven-snapshots/](http://3.17.13.134:8081/repository/maven-snapshots/)"
-        GROUP_ID_PATH  = "com/example"
-        APP_NAME       = "level-devil-webapp"
-        DOCKER_REPO    = "sgorijala513/tomcat"
-    }
+#🌐 11. Access the Application
+Open in browser:
+http://<ec2-public-ip>:8080
+You should see the deployed Java application.
 
-    stages {
 
-        stage('Checkout Code') {
-            steps {
-                checkout scm
-                script { echo "Commit: ${env.GIT_COMMIT}" }
-            }
-        }
+# 🐞 12. Troubleshooting Guide
+Tomcat Shows 404
+Ensure ROOT.war exists
+Ensure custom Tomcat was used
+Ensure container restarted during deployment
+Jenkins SSH Credential Errors
+Credential ID must match Jenkinsfile exactly
+Use correct private key (not .pub)
+Nexus Upload Fails
+Repository Type: Maven (snapshots)
+Correct username/password in credentials
+Docker Push Fails
+Ensure correct DockerHub repo name
+Credentials must match Jenkinsfile
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh """
-                        mvn clean verify sonar:sonar \
-                        -Dsonar.projectKey=level-devil-webapp
-                    """
-                }
-            }
-        }
 
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+# 🏁 13. Final Result
+You now have a complete CI/CD setup with:
+✔ GitHub
+✔ Jenkins
+✔ SonarQube
+✔ Nexus
+✔ Docker
+✔ Custom Tomcat
+✔ Automated deployment
+This pipeline continuously builds, analyzes, stores, packages, and deploys your Java application end-to-end.
 
-        stage('Build WAR') {
-            steps {
-                sh "mvn clean package -DskipTests=false"
-            }
-        }
 
-        stage('Upload WAR to Nexus') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-                    script {
-                        def WAR = sh(script: "ls target/*.war | head -n 1", returnStdout: true).trim()
-                        def VERSION = sh(script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'", returnStdout: true).trim()
-
-                        def ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
-                        echo "Uploading WAR → ${ARTIFACT_URL}"
-
-                        sh """
-                            curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
-                                 --upload-file ${WAR} \
-                                 "${ARTIFACT_URL}"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-
-                    script {
-                        def VERSION = sh(script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'", returnStdout: true).trim()
-                        echo "Building docker image with VERSION=${VERSION}"
-                    }
-
-                    sh """
-                        docker build \
-                            --build-arg NEXUS_URL=${NEXUS_URL} \
-                            --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
-                            --build-arg APP_NAME=${APP_NAME} \
-                            --build-arg VERSION=${VERSION} \
-                            --build-arg NEXUS_USER=${NEXUS_USER} \
-                            --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                            -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
-                            -t ${DOCKER_REPO}:latest .
-                    """
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-user',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-
-                    sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                        docker push ${DOCKER_REPO}:${GIT_COMMIT.take(7)}
-                        docker push ${DOCKER_REPO}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Tomcat Docker Server') {
-            steps {
-                sshagent(['docker-server']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest'
-                    """
-                }
-            }
-        }
-    }
-
-    post {
-        success { echo "BUILD SUCCESSFUL" }
-        failure { echo "BUILD FAILED" }
-    }
-}
-🖥 EC2 Deployment Setup
-Install Docker:
-
-Bash
-sudo apt update
-sudo apt install -y docker.io
-Container is deployed automatically by Jenkins.
-
-🌍 Accessing the Web App
-Open:
-
-http://<EC2-DEPLOYMENT-IP>:8080
-
-🐞 Troubleshooting Guide
-❌ Tomcat shows 404 WAR file not copied as ROOT.war — fixed by Dockerfile already.
-
-❌ Jenkins cannot ssh Credential ID must be exactly: docker-server
-
-❌ Docker push unauthorized Token must be Read/Write, not Read-only.
-
-❌ Nexus upload fails Check repository type: must be maven-snapshots.
-
-👤 Author
-Sai Gorijala DevOps Engineer GitHub: https://github.com/SaiGorijala
+#🎉 Project Completed Successfully
