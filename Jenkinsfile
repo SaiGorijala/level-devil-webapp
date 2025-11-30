@@ -36,8 +36,8 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('sonarqube') {
                         sh """
-                           mvn sonar:sonar \
-                           -Dsonar.login=${SONAR_TOKEN}
+                            mvn sonar:sonar \
+                            -Dsonar.login=${SONAR_TOKEN}
                         """
                     }
                 }
@@ -54,19 +54,23 @@ pipeline {
 
         stage('(Optional) Upload to Nexus') {
             steps {
-                echo "You can enable mvn deploy later if you want."
+                echo "Nexus upload can be enabled later if needed."
             }
         }
 
-        stage('Deploy WAR to Tomcat on u4') {
+        stage('Deploy WAR to Tomcat') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
                     sh """
                         WAR_FILE=`ls target/*.war`
 
+                        echo "Uploading WAR to Tomcat..."
                         scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $WAR_FILE ${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_TOMCAT_PATH}/ROOT.war
 
+                        echo "Restarting Tomcat..."
                         ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl restart tomcat'
+
+                        echo "Deployment completed."
                     """
                 }
             }
@@ -75,10 +79,10 @@ pipeline {
 
     post {
         success {
-            echo "Deployment completed successfully!"
+            echo "Pipeline + Deployment Successful!"
         }
         failure {
-            echo "Pipeline failed — check logs."
+            echo "Pipeline Failed — Check Console Output."
         }
     }
 }
