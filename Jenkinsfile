@@ -1,156 +1,129 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        NEXUS_URL      = "http://3.17.13.134:8081/repository/maven-snapshots/"
-        GROUP_ID_PATH  = "com/example"
-        APP_NAME       = "level-devil-webapp"
-        DOCKER_REPO    = "sgorijala513/tomcat"
+  environment {
+    // change these to your values
+    DOCKERHUB_REPO = "your_dockerhub_username/my-java-app"
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    CONTAINER_NAME = "my-java-app"
+    DEPLOY_HOST = "13.53.131.137"          // replace with your u4 IP
+    DEPLOY_USER = "ubuntu"
+    APP_PORT = "8080"                     // port inside container (tomcat default)
+    HOST_PORT = "80"                      // port on u4 to expose app
+  }
+
+  tools {
+    maven 'maven3'    // must match Jenkins Global Tool name
+    jdk 'jdk17'       // must match Jenkins Global Tool name
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
 
-    stages {
-
-        stage('Checkout Code') {
-            steps {
-                checkout scm
-                script {
-                    echo "Commit: ${env.GIT_COMMIT}"
-                }
-            }
+    stage('Build & Unit Tests') {
+      steps {
+        sh 'mvn -B -DskipTests=false clean package'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'target/*.jar, target/*.war', fingerprint: true
+          junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
         }
-
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh """
-                        mvn clean verify sonar:sonar \
-                        -Dsonar.projectKey=level-devil-webapp
-                    """
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Build WAR') {
-            steps {
-                sh "mvn clean package -DskipTests=false"
-            }
-        }
-
-        stage('Upload WAR to Nexus') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-
-                    script {
-
-                        // WAR file name
-                        def WAR = sh(
-                            script: "ls target/*.war | head -n 1",
-                            returnStdout: true
-                        ).trim()
-
-                        // Extract version from POM
-                        def VERSION = sh(
-                            script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
-                            returnStdout: true
-                        ).trim()
-
-                        // Upload path
-                        def ARTIFACT_URL = "${NEXUS_URL}${GROUP_ID_PATH}/${APP_NAME}/${VERSION}/${APP_NAME}-${VERSION}.war"
-
-                        echo "Uploading WAR → ${ARTIFACT_URL}"
-
-                        sh """
-                            curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
-                                 --upload-file ${WAR} \
-                                 "${ARTIFACT_URL}"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-                    script {
-
-                        // Extract VERSION again
-                        def VERSION = sh(
-                            script: "grep -m1 \"<version>\" pom.xml | sed 's|.*<version>||; s|</version>.*||'",
-                            returnStdout: true
-                        ).trim()
-
-                        echo "Building docker image with VERSION=${VERSION}"
-
-                        sh """
-                            docker build \
-                                --build-arg NEXUS_URL=${NEXUS_URL} \
-                                --build-arg GROUP_ID_PATH=${GROUP_ID_PATH} \
-                                --build-arg APP_NAME=${APP_NAME} \
-                                --build-arg VERSION=${VERSION} \
-                                --build-arg NEXUS_USER=${NEXUS_USER} \
-                                --build-arg NEXUS_PASS=${NEXUS_PASS} \
-                                -t ${DOCKER_REPO}:${GIT_COMMIT.take(7)} \
-                                -t ${DOCKER_REPO}:latest \
-                                .
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-user',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                        docker push ${DOCKER_REPO}:${GIT_COMMIT.take(7)}
-                        docker push ${DOCKER_REPO}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Tomcat Docker Server') {
-            steps {
-
-                // The SSH key ID must match Jenkins credentials EXACTLY
-                sshagent(['docker-server']) {
-
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker pull ${DOCKER_REPO}:latest'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker stop tomcat 2>/dev/null || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker rm tomcat 2>/dev/null || true'
-                        ssh -o StrictHostKeyChecking=no ubuntu@3.17.13.134 'docker run -d --name tomcat -p 8080:8080 ${DOCKER_REPO}:latest'
-                    """
-                }
-            }
-        }
-
+      }
     }
 
-    post {
-        success { echo "BUILD SUCCESSFUL" }
-        failure { echo "BUILD FAILED" }
+    stage('SonarQube Analysis') {
+      steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+          // Ensure SonarQube configured in Jenkins with the name 'sonarqube'
+          withSonarQubeEnv('sonarqube') {
+            sh "mvn -B sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+          }
+        }
+      }
     }
+
+    stage('Wait for Quality Gate') {
+      steps {
+        // requires "Pipeline: SonarQube" and "Generic Webhook" support in Jenkins
+        timeout(time: 2, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('(Optional) Upload artifact to Nexus') {
+      when {
+        expression { fileExists('pom.xml') } // only if Maven project
+      }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+          // This example uses curl to upload to Nexus raw or server that accepts raw uploads.
+          // If you want to use Maven deploy to Nexus, configure distributionManagement in pom.xml and Jenkins Maven settings.
+          sh '''
+            ART=target/*.war
+            if ls $ART 1> /dev/null 2>&1; then
+              # example: upload to Nexus raw repository (adjust URL to your Nexus repo/path)
+              curl -v -u $NEXUS_USER:$NEXUS_PASS --upload-file $ART "http://<u3-ip>:8081/repository/raw-hosted/$(basename $ART)"
+            else
+              echo "No WAR found to upload to Nexus"
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        script {
+          sh "docker build -t ${env.DOCKERHUB_REPO}:${env.IMAGE_TAG} ."
+        }
+      }
+    }
+
+    stage('Push to Docker Hub') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh '''
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+            docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}
+            docker logout
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to u4') {
+      steps {
+        // Use SSH private key credential (type: SSH Username with private key) with ID 'deploy-ssh'
+        withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'DEPLOY_USER')]) {
+          sh '''
+            # copy SSH key to temporary location and set permissions
+            chmod 600 ${SSH_KEY}
+            # pull new image on remote, stop & replace container
+            ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${DEPLOY_USER}@${DEPLOY_HOST} <<'SSH_EOF'
+              docker login -u ${DOCKER_USER} -p ${DOCKER_PASS} >/dev/null 2>&1 || true
+              docker pull ${DOCKERHUB_REPO}:${IMAGE_TAG}
+              docker stop ${CONTAINER_NAME} || true
+              docker rm ${CONTAINER_NAME} || true
+              docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKERHUB_REPO}:${IMAGE_TAG}
+            SSH_EOF
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Pipeline completed successfully: ${DOCKERHUB_REPO}:${IMAGE_TAG}"
+    }
+    failure {
+      echo "Pipeline failed — check console output."
+    }
+  }
 }
